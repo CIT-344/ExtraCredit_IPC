@@ -1,6 +1,7 @@
 ﻿using GameLibray.Enums;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -11,7 +12,7 @@ using System.Threading.Tasks;
 namespace GameLibray.Server
 {
     public delegate void ClientGuessedNumberHandler(Guid ClientID, IPEndPoint RemoteEndpoint);
-    public class ServerClientReference
+    public class ServerClientReference: IDisposable
     {
         internal OnStatusChangeHandler ConnectionEvent;
         internal int NumberToGuess;
@@ -92,7 +93,12 @@ namespace GameLibray.Server
                 }
                 finally
                 {
-                    Reader.Dispose();
+                    if (Reader != null)
+                    {
+                        Reader.Close();
+                    }
+
+                    Debug.WriteLine($"Reader thread for client {this.ID} is about to end. Thread ID: {Thread.CurrentThread.ManagedThreadId}");
                 }
             }, EndRequest, TaskCreationOptions.LongRunning, TaskScheduler.Current); // The token connected to ending this thread, a hint to the scheduler that this thread shouldn't come from the pool, the scheduler responsible for creating the thread
         }
@@ -100,13 +106,13 @@ namespace GameLibray.Server
         /// <summary>
         /// Sends a message to the underlying stream to transmit data to the client
         /// </summary>
-        private void Write()
+        private void Write(String Message)
         {
             // Will do something like parse my data object
             // But that is later!
 
             // This writer is the server telling the client something
-            Writer.WriteLine();
+            Writer.WriteLine(Message);
         }
 
         /// <summary>
@@ -118,7 +124,7 @@ namespace GameLibray.Server
             // System Time
             // Range of numbers to guess from
             // Etc.
-            Write();
+            Write("OPTIONS");
         }
 
         /// <summary>
@@ -128,7 +134,7 @@ namespace GameLibray.Server
         {
             // Send information about the winner to this client
             // If they're lucky this client was the winner!
-            Write();
+            Write("GAME_OVER");
         }
 
 
@@ -138,7 +144,33 @@ namespace GameLibray.Server
         internal void WriteGameStart()
         {
             // Send a go command to inform the client that guessing will now be accepted.
-            Write();
+            Write("GAME_START");
+        }
+
+        /// <summary>
+        /// Tons and tons of cleanup that makes sure no streams or connections get left open after this object is being removed from memory
+        /// </summary>
+        public void Dispose()
+        {
+            if (UnderlyingConnection != null)
+            {
+                UnderlyingConnection.Close();
+            }
+
+            if (UnderlyingConnectionStream != null)
+            {
+                UnderlyingConnectionStream.Close();
+            }
+
+            if (Writer != null)
+            {
+                Writer.Close();
+            }
+
+            if (Reader != null)
+            {
+                Reader.Close();
+            }
         }
     }
 }

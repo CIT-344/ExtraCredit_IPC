@@ -11,6 +11,8 @@ namespace ServerConsole
 {
     class Program
     {
+        const int MinPlayerCount = 1;
+
         static GameServer GameEngine;
         static void Main(string[] args)
         {
@@ -34,6 +36,16 @@ namespace ServerConsole
             }
 
 
+            do
+            {
+                // Not enough clients take a nap until they all connect
+                Task.Delay(TimeSpan.FromSeconds(1)).Wait();
+
+
+            } while (GameEngine.GetClientCount() < MinPlayerCount);
+
+            // Time to play!
+            GameEngine.StartGame();
 
             while (GameEngine != null)
             {

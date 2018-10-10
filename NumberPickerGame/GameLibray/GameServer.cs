@@ -1,6 +1,7 @@
 ﻿using GameLibray.Enums;
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -46,9 +47,16 @@ namespace GameLibray.Server
                     break;
                 case ConnectionType.Disconnected:
                     ConnectedClients.TryRemove(Client.ID, out ServerClientReference oldClient);
+                    oldClient.Dispose();
                     break;
 
             }
+        }
+
+
+        public long GetClientCount()
+        {
+            return ConnectedClients.LongCount();
         }
 
         public IPEndPoint GetBindingInformation()
@@ -138,7 +146,6 @@ namespace GameLibray.Server
 
         public void StartGame()
         {
-
             // Safe guards to prevent the server thread from re-firing
             // Maybe other code has already started the server and is just waiting for the game to start!
             if (ServerListenerThread == null)
