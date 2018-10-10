@@ -1,4 +1,5 @@
-﻿using GameLibray.Server;
+﻿using GameLibray.Enums;
+using GameLibray.Server;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,7 +17,7 @@ namespace ServerConsole
             Console.WriteLine("Server Starting . . . .");
 
             GameEngine = new GameServer(new IPEndPoint(IPAddress.Loopback, 11000));
-            GameEngine.OnClientConnected += LogClientConnected;
+            GameEngine.OnClientStatusChanged += LogClientConnectionChanged;
 
 
 
@@ -40,10 +41,25 @@ namespace ServerConsole
             }
         }
 
-        private static void LogClientConnected(ServerClientReference NewClient)
+        private static void LogClientConnectionChanged(ServerClientReference Client, ConnectionType ConnectionStatus)
         {
-            var info = NewClient.GetBindingInformation();
-            Console.WriteLine($"A new client has joined the server at {info.Address} on remote port {info.Port}");
+
+            switch (ConnectionStatus)
+            {
+                case ConnectionType.Connected:
+                    {
+                        var info = Client.GetBindingInformation();
+                        if (info != null)
+                        {
+                            Console.WriteLine($"A new client has joined the server at {info.Address} on remote port {info.Port}");
+                        }
+                        break;
+                    }
+
+                case ConnectionType.Disconnected:
+                    Console.WriteLine($"Client {Client.ID} has left the server");
+                    break;
+            }
         }
     }
 }

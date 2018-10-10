@@ -1,4 +1,5 @@
-﻿using System;
+﻿using GameLibray.Enums;
+using System;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
@@ -7,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace GameLibray.Server
 {
-    public delegate void OnNewClientHandler(ServerClientReference NewClient);
+    public delegate void OnStatusChangeHandler(ServerClientReference Client, ConnectionType Connection);
     public class GameServer
     {
 
@@ -17,11 +18,11 @@ namespace GameLibray.Server
 
         private readonly TcpListener UnderlyingListener;
 
-        public event OnNewClientHandler OnClientConnected;
+        public event OnStatusChangeHandler OnClientStatusChanged;
 
         private ConcurrentDictionary<Guid, ServerClientReference> ConnectedClients = new ConcurrentDictionary<Guid, ServerClientReference>();
 
-        private AutoResetEvent ServerReadySignal = new AutoResetEvent(false);
+        private readonly AutoResetEvent ServerReadySignal = new AutoResetEvent(false);
 
         public int NumberToGuess
         {
@@ -33,6 +34,21 @@ namespace GameLibray.Server
         public GameServer(IPEndPoint BindPoint)
         {
             UnderlyingListener = new TcpListener(BindPoint);
+            OnClientStatusChanged += InternalClientEventChange;
+        }
+
+        private void InternalClientEventChange(ServerClientReference Client, ConnectionType Connection)
+        {
+            switch(Connection)
+            {
+                case ConnectionType.Connected:
+                    ConnectedClients.TryAdd(Client.ID, Client);
+                    break;
+                case ConnectionType.Disconnected:
+                    ConnectedClients.TryRemove(Client.ID, out ServerClientReference oldClient);
+                    break;
+
+            }
         }
 
         public IPEndPoint GetBindingInformation()
@@ -98,13 +114,9 @@ namespace GameLibray.Server
         /// <param name="newClient">The TcpClient used for communication</param>
         private void SetupNewClient(TcpClient newClient)
         {
-            Task.Run(() =>
-            {
-                var serverReference = new ServerClientReference(Guid.NewGuid(), newClient, ListenerCancelToken);
-                serverReference.OnClientWon += OnWinnerFound;
-                ConnectedClients.TryAdd(serverReference.ID, serverReference);
-                OnClientConnected?.Invoke(serverReference);
-            });
+            var serverReference = new ServerClientReference(Guid.NewGuid(), newClient, OnClientStatusChanged, ListenerCancelToken);
+            serverReference.OnClientWon += OnWinnerFound;
+            OnClientStatusChanged?.Invoke(serverReference, ConnectionType.Connected);
         }
 
         /// <summary>

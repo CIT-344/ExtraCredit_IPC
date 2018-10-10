@@ -1,4 +1,5 @@
-﻿using System;
+﻿using GameLibray.Enums;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -12,6 +13,7 @@ namespace GameLibray.Server
     public delegate void ClientGuessedNumberHandler(Guid ClientID, IPEndPoint RemoteEndpoint);
     public class ServerClientReference
     {
+        internal OnStatusChangeHandler ConnectionEvent;
         internal int NumberToGuess;
         public event ClientGuessedNumberHandler OnClientWon;
 
@@ -27,19 +29,23 @@ namespace GameLibray.Server
 
         CancellationToken EndRequest;
 
-        public ServerClientReference(Guid ID, TcpClient Connection, CancellationToken EndRequest)
+        public ServerClientReference(Guid ID, TcpClient Connection, OnStatusChangeHandler StatusEvent ,CancellationToken EndRequest)
         {
+            this.ConnectionEvent = StatusEvent;
             this.ID = ID;
             UnderlyingConnection = Connection;
             this.EndRequest = EndRequest;
-            UnderlyingConnectionStream = Connection.GetStream();
+            UnderlyingConnectionStream = UnderlyingConnection.GetStream();
+
+            // Setup the writer and don't close it yet!
+            Writer = new StreamWriter(UnderlyingConnectionStream, Encoding.UTF8) { AutoFlush = true };
             WriteGameOptions();
+            StartReader();
         }
 
         internal void StartGame(int NumberToGuess)
         {
             this.NumberToGuess = NumberToGuess;
-            StartReader();
             WriteGameStart();
             // Send the client some data about the game!
             //Write("Something!");
@@ -47,7 +53,7 @@ namespace GameLibray.Server
 
         public IPEndPoint GetBindingInformation()
         {
-            if (UnderlyingConnection != null)
+            if (UnderlyingConnection != null && UnderlyingConnection.Connected)
             {
                 return (IPEndPoint)UnderlyingConnection.Client.RemoteEndPoint;
             }
@@ -64,7 +70,7 @@ namespace GameLibray.Server
                 try
                 {
                     Reader = new StreamReader(UnderlyingConnectionStream, Encoding.UTF8);
-                    while (!EndRequest.IsCancellationRequested)
+                    while (!EndRequest.IsCancellationRequested && UnderlyingConnection.Connected)
                     {
                         // TODO - Write Extension to handle directly reading a data object
                         var result = Reader.ReadLine();
@@ -74,9 +80,15 @@ namespace GameLibray.Server
                 }
                 catch (OperationCanceledException endThread)
                 { }
+                catch (IOException ioError) when (ioError.InnerException != null 
+                                                    && ioError.InnerException.GetType() == typeof(SocketException)
+                                                    && (ioError.InnerException as SocketException).SocketErrorCode == SocketError.ConnectionReset) // Thats a lot of conditions (designed to catch the exception when a client has just closed the connection only)
+                {
+                    ConnectionEvent?.Invoke(this, ConnectionType.Disconnected);
+                }
                 catch (Exception e)
                 {
-
+                    throw;
                 }
                 finally
                 {
@@ -90,15 +102,11 @@ namespace GameLibray.Server
         /// </summary>
         private void Write()
         {
-            // Cleanly create a new writer every time one is needed this prevent any memory leaks on the writer at least
-            using (var Writer = new StreamWriter(UnderlyingConnectionStream, Encoding.UTF8) {AutoFlush = true })
-            {
-                // Will do something like parse my data object
-                // But that is later!
+            // Will do something like parse my data object
+            // But that is later!
 
-                // This writer is the server telling the client something
-                Writer.WriteLine();
-            }
+            // This writer is the server telling the client something
+            Writer.WriteLine();
         }
 
         /// <summary>
